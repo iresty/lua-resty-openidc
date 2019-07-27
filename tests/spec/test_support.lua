@@ -527,7 +527,7 @@ function test_support.start_server(custom_config)
   local out = assert(io.open("/tmp/server/conf/nginx.conf", "w"))
   write_config(out, custom_config)
   assert(out:close())
-  assert(os.execute("openresty -c /tmp/server/conf/nginx.conf > /dev/null"), "failed to start nginx")
+  assert(0 == os.execute("openresty -p /tmp/server -c /tmp/server/conf/nginx.conf > /dev/null"), "failed to start nginx")
 end
 
 local function kill(pid, signal)
@@ -539,16 +539,30 @@ local function kill(pid, signal)
   return os.execute("/bin/kill " .. signal .. pid)
 end
 
+local function trim(s)
+    return (s:gsub([[^%s*(.-)%s*$]], "%1"))
+end
+
 local function is_running(pid)
-  return kill(pid, 0)
+    pid = trim(pid)
+    local f = io.popen("ps -ef | grep openresty | grep " .. pid
+                       .. "| grep -v grep | wc -l")
+    if not f then
+        return false
+    end
+    local count = f:read("*all")
+    f:close()
+
+    -- print("res: [" .. count .. "]")
+    return tonumber(count) > 0
 end
 
 -- tries hard to stop the server started by test_support.start_server
 function test_support.stop_server()
   local pid = test_support.load("/tmp/server/logs/nginx.pid")
   local sleep = 0.1
-  for a = 1, 5
-  do
+
+  for _ = 1, 5 do
     if is_running(pid) then
       kill(pid)
       os.execute("sleep " .. sleep)
@@ -557,6 +571,7 @@ function test_support.stop_server()
       break
     end
   end
+
   if is_running(pid) then
      print("forcing nginx to stop")
      kill(pid, 9)
